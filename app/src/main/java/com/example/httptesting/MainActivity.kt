@@ -11,7 +11,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.httptesting.ui.theme.HTTPTestingTheme
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import software.momento.kotlin.sdk.TopicClient
+import software.momento.kotlin.sdk.auth.CredentialProvider
+import software.momento.kotlin.sdk.config.TopicConfigurations
+import software.momento.kotlin.sdk.responses.topic.TopicMessage
+import software.momento.kotlin.sdk.responses.topic.TopicSubscribeResponse
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -21,7 +30,7 @@ import java.util.UUID
 import java.util.concurrent.LinkedBlockingQueue
 import javax.net.ssl.HttpsURLConnection
 
-val baseApiUrl = "https://57zovcekn0.execute-api.us-west-2.amazonaws.com/prod"
+const val baseApiUrl = "https://57zovcekn0.execute-api.us-west-2.amazonaws.com/prod"
 val supportedLanguages = mutableMapOf<String, String>()
 var momentoApiToken: String = ""
 var tokenExpiresAt: Int = 0
@@ -42,7 +51,15 @@ class MainActivity : ComponentActivity() {
         }
         getSupportedLanguages()
         getApiToken()
-        println("token is $momentoApiToken and expires at $tokenExpiresAt")
+
+        val credentialProvider = CredentialProvider.fromString(momentoApiToken)
+        val topicClient = TopicClient(
+            credentialProvider = credentialProvider,
+            configuration = TopicConfigurations.Laptop.latest
+        )
+        runBlocking {
+            topicSubscribe(topicClient)
+        }
     }
 }
 
@@ -59,6 +76,30 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 fun GreetingPreview() {
     HTTPTestingTheme {
         Greeting("Android")
+    }
+}
+
+suspend fun topicSubscribe(topicClient: TopicClient) {
+    when (val response = topicClient.subscribe("cache", "chat-en")) {
+        is TopicSubscribeResponse.Subscription -> coroutineScope {
+            launch {
+                withTimeoutOrNull(2_000) {
+                    response.collect { item ->
+                        when (item) {
+                            is TopicMessage.Text -> println("Received text message: ${item.value}")
+                            is TopicMessage.Binary -> println("Received binary message: ${item.value}")
+                            is TopicMessage.Error -> throw RuntimeException(
+                                "An error occurred reading messages from topic 'test-topic': ${item.errorCode}", item
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        is TopicSubscribeResponse.Error -> throw RuntimeException(
+            "An error occurred while attempting to subscribe to topic 'test-topic': ${response.errorCode}", response
+        )
     }
 }
 
@@ -107,7 +148,7 @@ private fun getSupportedLanguages() {
     val queue = LinkedBlockingQueue<String>()
 
     Thread {
-        val json = getUrl(apiURL)
+        val json = URL(apiURL).readText()
         queue.add(json)
     }.start()
 
@@ -119,8 +160,4 @@ private fun getSupportedLanguages() {
         val label = language.getString("label")
         supportedLanguages[value] = label
     }
-}
-
-private fun getUrl(url: String): String {
-    return URL(url).readText()
 }
