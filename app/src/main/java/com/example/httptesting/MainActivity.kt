@@ -3,13 +3,28 @@ package com.example.httptesting
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.example.httptesting.ui.theme.HTTPTestingTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -28,7 +43,6 @@ import java.io.OutputStreamWriter
 import java.net.URL
 import java.net.URLEncoder
 import java.util.UUID
-import java.util.concurrent.LinkedBlockingQueue
 import javax.net.ssl.HttpsURLConnection
 
 const val baseApiUrl = "https://57zovcekn0.execute-api.us-west-2.amazonaws.com/prod"
@@ -37,6 +51,7 @@ var momentoApiToken: String = ""
 var tokenExpiresAt: Int = 0
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -46,7 +61,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Greeting("Dude")
+                    Greeting("pete")
                 }
             }
         }
@@ -58,9 +73,10 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
     LaunchedEffect(name) {
         withContext(Dispatchers.IO) {
             coroutineScope {
-                launch { getApiToken() }
+                launch { getApiToken(name) }
                 launch { getSupportedLanguages() }
             }
+            println("Supported languages are ${supportedLanguages.toString()}")
             val credentialProvider = CredentialProvider.fromString(momentoApiToken)
             val topicClient = TopicClient(
                 credentialProvider = credentialProvider,
@@ -69,10 +85,53 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
             launch { topicSubscribe(topicClient) }
         }
     }
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
+    GreetingLayout(modifier = modifier)
+}
+
+@Composable
+fun GreetingLayout(
+    modifier: Modifier = Modifier
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var currentLanguage by remember { mutableStateOf("en") }
+    LanguageDropdown(
+        menuExpanded = menuExpanded,
+        currentLanguage = currentLanguage
     )
+}
+
+@Composable
+fun LanguageDropdown(
+    menuExpanded: Boolean,
+    currentLanguage: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .wrapContentSize(Alignment.TopStart)
+            .padding(8.dp)
+    ) {
+        println("rendering ddl")
+        Button(onClick = { menuExpanded = true }) {
+            Text(text = supportedLanguages[currentLanguage] ?: "Please Choose")
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false }
+        ) {
+            for (language in supportedLanguages.entries.iterator()) {
+                DropdownMenuItem(
+                    text = { Text(language.value) },
+                    onClick = {
+                        currentLanguage = language.key
+                        menuExpanded = false
+                    }
+                )
+            }
+        }
+    }
 }
 
 suspend fun topicSubscribe(topicClient: TopicClient) {
@@ -99,16 +158,13 @@ suspend fun topicSubscribe(topicClient: TopicClient) {
     }
 }
 
-private fun getApiToken() {
+private fun getApiToken(username: String) {
     val apiUrl = "$baseApiUrl/v1/translate/token"
-
-    // These will be inputs
-    val username = "peteg"
     val id = UUID.randomUUID()
-
     var reqParams = URLEncoder.encode("username", "UTF-8") + "=" + URLEncoder.encode(username, "UTF-8")
     reqParams += "&" + URLEncoder.encode("id", "UTF-8") + "=" + URLEncoder.encode(id.toString(), "UTF-8")
     val url = URL(apiUrl)
+
     with (url.openConnection() as HttpsURLConnection) {
         requestMethod = "POST"
         val wr = OutputStreamWriter(outputStream)
