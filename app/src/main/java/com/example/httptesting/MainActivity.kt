@@ -39,10 +39,6 @@ var tokenExpiresAt: Int = 0
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // TODO: Move to suspend fun
-        getSupportedLanguages()
-
         setContent {
             HTTPTestingTheme {
                 // A surface container using the 'background' color from the theme
@@ -63,6 +59,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
         withContext(Dispatchers.IO) {
             coroutineScope {
                 launch { getApiToken() }
+                launch { getSupportedLanguages() }
             }
             val credentialProvider = CredentialProvider.fromString(momentoApiToken)
             val topicClient = TopicClient(
@@ -79,7 +76,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 }
 
 suspend fun topicSubscribe(topicClient: TopicClient) {
-    when (val response = topicClient.subscribe("cache", "chat-en")) {
+    when (val response = topicClient.subscribe("moderator", "chat-en")) {
         is TopicSubscribeResponse.Subscription -> coroutineScope {
             launch {
                 withTimeoutOrNull(5_000_000) {
@@ -102,7 +99,7 @@ suspend fun topicSubscribe(topicClient: TopicClient) {
     }
 }
 
-fun getApiToken() {
+private fun getApiToken() {
     val apiUrl = "$baseApiUrl/v1/translate/token"
 
     // These will be inputs
@@ -135,14 +132,8 @@ fun getApiToken() {
 
 private fun getSupportedLanguages() {
     val apiURL = "$baseApiUrl/v1/translate/languages"
-    val queue = LinkedBlockingQueue<String>()
-
-    Thread {
-        val json = URL(apiURL).readText()
-        queue.add(json)
-    }.start()
-
-    val jsonObject = JSONObject(queue.take())
+    val json = URL(apiURL).readText()
+    val jsonObject = JSONObject(json)
     val languages = jsonObject.getJSONArray("supportedLanguages")
     for (i in 0..<languages.length()) {
         val language = languages.getJSONObject(i)
