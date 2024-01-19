@@ -8,12 +8,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import com.example.httptesting.ui.theme.HTTPTestingTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import software.momento.kotlin.sdk.TopicClient
@@ -38,6 +39,10 @@ var tokenExpiresAt: Int = 0
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // TODO: Move to suspend fun
+        getSupportedLanguages()
+
         setContent {
             HTTPTestingTheme {
                 // A surface container using the 'background' color from the theme
@@ -49,41 +54,35 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        getSupportedLanguages()
-        getApiToken()
-
-        val credentialProvider = CredentialProvider.fromString(momentoApiToken)
-        val topicClient = TopicClient(
-            credentialProvider = credentialProvider,
-            configuration = TopicConfigurations.Laptop.latest
-        )
-        runBlocking {
-            topicSubscribe(topicClient)
-        }
     }
 }
 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
+    LaunchedEffect(name) {
+        withContext(Dispatchers.IO) {
+            coroutineScope {
+                launch { getApiToken() }
+            }
+            val credentialProvider = CredentialProvider.fromString(momentoApiToken)
+            val topicClient = TopicClient(
+                credentialProvider = credentialProvider,
+                configuration = TopicConfigurations.Laptop.latest
+            )
+            launch { topicSubscribe(topicClient) }
+        }
+    }
     Text(
         text = "Hello $name!",
         modifier = modifier
     )
 }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    HTTPTestingTheme {
-        Greeting("Android")
-    }
-}
-
 suspend fun topicSubscribe(topicClient: TopicClient) {
     when (val response = topicClient.subscribe("cache", "chat-en")) {
         is TopicSubscribeResponse.Subscription -> coroutineScope {
             launch {
-                withTimeoutOrNull(2_000) {
+                withTimeoutOrNull(5_000_000) {
                     response.collect { item ->
                         when (item) {
                             is TopicMessage.Text -> println("Received text message: ${item.value}")
@@ -103,44 +102,35 @@ suspend fun topicSubscribe(topicClient: TopicClient) {
     }
 }
 
-private fun getApiToken() {
+fun getApiToken() {
     val apiUrl = "$baseApiUrl/v1/translate/token"
-    val queue = LinkedBlockingQueue<String>()
 
     // These will be inputs
     val username = "peteg"
     val id = UUID.randomUUID()
 
-    Thread {
-        var reqParams = URLEncoder.encode("username", "UTF-8") + "=" + URLEncoder.encode(username, "UTF-8")
-        reqParams += "&" + URLEncoder.encode("id", "UTF-8") + "=" + URLEncoder.encode(id.toString(), "UTF-8")
-        val url = URL(apiUrl)
-        with (url.openConnection() as HttpsURLConnection) {
-            requestMethod = "POST"
-            val wr = OutputStreamWriter(outputStream)
-            wr.write(reqParams)
-            wr.flush()
+    var reqParams = URLEncoder.encode("username", "UTF-8") + "=" + URLEncoder.encode(username, "UTF-8")
+    reqParams += "&" + URLEncoder.encode("id", "UTF-8") + "=" + URLEncoder.encode(id.toString(), "UTF-8")
+    val url = URL(apiUrl)
+    with (url.openConnection() as HttpsURLConnection) {
+        requestMethod = "POST"
+        val wr = OutputStreamWriter(outputStream)
+        wr.write(reqParams)
+        wr.flush()
 
-            println("URL : $url")
-            println("Response Code : $responseCode")
+        BufferedReader(InputStreamReader(inputStream)).use {
+            val response = StringBuffer()
 
-            BufferedReader(InputStreamReader(inputStream)).use {
-                val response = StringBuffer()
-
-                var inputLine = it.readLine()
-                while (inputLine != null) {
-                    response.append(inputLine)
-                    inputLine = it.readLine()
-                }
-                println("Response : $response")
-                queue.add(response.toString())
+            var inputLine = it.readLine()
+            while (inputLine != null) {
+                response.append(inputLine)
+                inputLine = it.readLine()
             }
+            val jsonObject = JSONObject(response.toString())
+            momentoApiToken = jsonObject.getString("token")
+            tokenExpiresAt = jsonObject.getInt("expiresAtEpoch")
         }
-    }.start()
-
-    val jsonObject = JSONObject(queue.take())
-    momentoApiToken = jsonObject.getString("token")
-    tokenExpiresAt = jsonObject.getInt("expiresAtEpoch")
+    }
 }
 
 private fun getSupportedLanguages() {
