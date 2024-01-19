@@ -51,7 +51,6 @@ var momentoApiToken: String = ""
 var tokenExpiresAt: Int = 0
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -85,27 +84,35 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
             launch { topicSubscribe(topicClient) }
         }
     }
-    GreetingLayout(modifier = modifier)
+    GreetingLayout(
+        modifier = modifier
+    )
 }
 
 @Composable
 fun GreetingLayout(
     modifier: Modifier = Modifier
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
     var currentLanguage by remember { mutableStateOf("en") }
+
     LanguageDropdown(
-        menuExpanded = menuExpanded,
-        currentLanguage = currentLanguage
+        modifier = modifier,
+        language = currentLanguage,
+        onLanguageChange = {
+            currentLanguage = it
+            println("language changed to $currentLanguage")
+        }
     )
+
 }
 
 @Composable
 fun LanguageDropdown(
-    menuExpanded: Boolean,
-    currentLanguage: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    language: String,
+    onLanguageChange: (String) -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -113,19 +120,23 @@ fun LanguageDropdown(
             .padding(8.dp)
     ) {
         println("rendering ddl")
-        Button(onClick = { menuExpanded = true }) {
-            Text(text = supportedLanguages[currentLanguage] ?: "Please Choose")
+        println("langs: ${supportedLanguages.toString()}")
+        Button(onClick = { menuExpanded = !menuExpanded }) {
+            Text(text = supportedLanguages[language] ?: "Please Choose")
             Icon(Icons.Default.ArrowDropDown, contentDescription = null)
         }
         DropdownMenu(
             expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false }
+            onDismissRequest = {
+                menuExpanded = false
+                println("menu rollup lang is $language")
+            }
         ) {
-            for (language in supportedLanguages.entries.iterator()) {
+            for (languageItem in supportedLanguages.entries.iterator()) {
                 DropdownMenuItem(
-                    text = { Text(language.value) },
+                    text = { Text(languageItem.value) },
                     onClick = {
-                        currentLanguage = language.key
+                        onLanguageChange(languageItem.key)
                         menuExpanded = false
                     }
                 )
