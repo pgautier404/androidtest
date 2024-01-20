@@ -3,8 +3,13 @@ package com.example.httptesting
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
@@ -24,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.httptesting.ui.theme.HTTPTestingTheme
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +53,7 @@ import javax.net.ssl.HttpsURLConnection
 
 const val baseApiUrl = "https://57zovcekn0.execute-api.us-west-2.amazonaws.com/prod"
 val supportedLanguages = mutableMapOf<String, String>()
+var messages = mutableStateOf("Loading messages...")
 var momentoApiToken: String = ""
 var tokenExpiresAt: Int = 0
 
@@ -94,16 +101,43 @@ fun GreetingLayout(
     modifier: Modifier = Modifier
 ) {
     var currentLanguage by remember { mutableStateOf("en") }
+    Column (
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        LanguageDropdown(
+            modifier = modifier.fillMaxWidth(),
+            language = currentLanguage,
+            onLanguageChange = {
+                currentLanguage = it
+                println("language changed to $currentLanguage")
+            }
+        )
+        MessageList(language = currentLanguage)
+    }
+}
 
-    LanguageDropdown(
-        modifier = modifier,
-        language = currentLanguage,
-        onLanguageChange = {
-            currentLanguage = it
-            println("language changed to $currentLanguage")
+@Composable
+fun MessageList(
+    language: String,
+    modifier: Modifier = Modifier
+) {
+    LaunchedEffect(language) {
+        withContext(Dispatchers.IO) {
+            launch { getMessagesForLanguage(language) }
         }
-    )
-
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .wrapContentSize(align = Alignment.Center)
+            .background(color = Color.Green)
+            .padding(4.dp)
+    ) {
+        Text(
+            text = messages.value
+        )
+    }
 }
 
 @Composable
@@ -115,7 +149,7 @@ fun LanguageDropdown(
     var menuExpanded by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .wrapContentSize(Alignment.TopStart)
             .padding(8.dp)
     ) {
@@ -198,8 +232,8 @@ private fun getApiToken(username: String) {
 }
 
 private fun getSupportedLanguages() {
-    val apiURL = "$baseApiUrl/v1/translate/languages"
-    val json = URL(apiURL).readText()
+    val apiUrl = "$baseApiUrl/v1/translate/languages"
+    val json = URL(apiUrl).readText()
     val jsonObject = JSONObject(json)
     val languages = jsonObject.getJSONArray("supportedLanguages")
     for (i in 0..<languages.length()) {
@@ -208,4 +242,12 @@ private fun getSupportedLanguages() {
         val label = language.getString("label")
         supportedLanguages[value] = label
     }
+}
+
+private fun getMessagesForLanguage(languageCode: String) {
+    val apiUrl = "$baseApiUrl/v1/translate/latestMessages/$languageCode"
+    println(apiUrl)
+    val json = URL(apiUrl).readText()
+    messages.value = json
+    println("Got messages: ${messages.value}")
 }
